@@ -425,6 +425,7 @@ local function HandlePlayer(p)
 	if p == LocalPlayer then return end
 	setupPlayerTag(p)
 	local function onChar(char)
+        if not HitboxEnabled then return end
 		Initialized[p.UserId] = false
 		local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 3)
 		if hrp then
@@ -445,6 +446,7 @@ Players.PlayerAdded:Connect(HandlePlayer)
 Players.PlayerRemoving:Connect(CleanupPlayer)
 
 local function RunWatchdog()
+    if not HitboxEnabled then return end
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			local need = (not Initialized[p.UserId]) or (not ActiveHitboxConnections[p.UserId])
