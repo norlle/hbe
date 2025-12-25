@@ -374,7 +374,7 @@ local __OriginalSetupHitbox = SetupHitbox
 
 -- STATE
 local HitboxEnabled = true
-local HitboxToggleKey = Enum.KeyCode.RightAlt
+local HitboxToggleKey = Enum.KeyCode.R
 
 -- HARD GATE (blocks ALL creation paths)
 SetupHitbox = function(player, character)
