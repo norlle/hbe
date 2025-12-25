@@ -1,4 +1,4 @@
-ocal Players = game:GetService("Players")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
@@ -367,44 +367,38 @@ local function SetupHitbox(player, character)
 	Initialized[player.UserId] = true
 end
 
-_G.__SetupHitbox = SetupHitbox
-
 local HitboxEnabled = true
 local HitboxToggleKey = Enum.KeyCode.RightAlt
 
-local function SetHitboxEnabled(state)
-	HitboxEnabled = state
-
-	if not HitboxEnabled then
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer then
-				if ActiveHitboxConnections[p.UserId] then
-					ActiveHitboxConnections[p.UserId]:Disconnect()
-					ActiveHitboxConnections[p.UserId] = nil
-				end
-				if p.Character then
-					local hb = p.Character:FindFirstChild("EnlargedHitboxVisual")
-					if hb then hb:Destroy() end
-				end
-				Initialized[p.UserId] = nil
-			end
-		end
-	else
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-				SetupHitbox(p, p.Character)
-			end
-		end
-	end
+_G.__SetupHitbox = function(player, character)
+	if not HitboxEnabled then return end
+	SetupHitbox(player, character)
 end
 
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
-	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == HitboxToggleKey then
-		SetHitboxEnabled(not HitboxEnabled)
+	if input.UserInputType == Enum.UserInputType.Keyboard
+		and input.KeyCode == HitboxToggleKey then
+
+		HitboxEnabled = not HitboxEnabled
+
+		if not HitboxEnabled then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer then
+					if ActiveHitboxConnections[p.UserId] then
+						ActiveHitboxConnections[p.UserId]:Disconnect()
+						ActiveHitboxConnections[p.UserId] = nil
+					end
+					if p.Character then
+						local hb = p.Character:FindFirstChild("EnlargedHitboxVisual")
+						if hb then hb:Destroy() end
+					end
+					Initialized[p.UserId] = nil
+				end
+			end
+		end
 	end
 end)
-
 
 local function HandlePlayer(p)
 	if p == LocalPlayer then return end
