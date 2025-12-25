@@ -369,8 +369,6 @@ end
 
 _G.__SetupHitbox = SetupHitbox
 
--- ⬇️ PASTE THE HITBOX TOGGLE CODE HERE ⬇️
--- HITBOX TOGGLE
 local HitboxEnabled = true
 local HitboxToggleKey = Enum.KeyCode.RightAlt
 
