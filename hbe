@@ -2,6 +2,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local HitboxEnabled = true
+local WatchdogEnabled = true
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -382,17 +384,19 @@ end
 
 _G.__SetupHitbox = SetupHitbox
 
--- TOGGLE HANDLER
 local function SetHitboxEnabled(state)
 	HitboxEnabled = state
+	WatchdogEnabled = state  -- pause the watchdog if we turn off
 
-	if not HitboxEnabled then
+	if not state then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= LocalPlayer then
+				-- stop any existing hitboxes
 				if ActiveHitboxConnections[p.UserId] then
 					ActiveHitboxConnections[p.UserId]:Disconnect()
 					ActiveHitboxConnections[p.UserId] = nil
 				end
+				-- destroy hitbox parts
 				if p.Character then
 					local hb = p.Character:FindFirstChild("EnlargedHitboxVisual")
 					if hb then hb:Destroy() end
@@ -402,14 +406,6 @@ local function SetHitboxEnabled(state)
 		end
 	end
 end
-
--- KEYBIND (NO gp CHECK)
-UserInputService.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Keyboard
-		and input.KeyCode == HitboxToggleKey then
-		SetHitboxEnabled(not HitboxEnabled)
-	end
-end)
 
 
 UserInputService.InputBegan:Connect(function(input, gp)
@@ -425,7 +421,6 @@ local function HandlePlayer(p)
 	if p == LocalPlayer then return end
 	setupPlayerTag(p)
 	local function onChar(char)
-        if not HitboxEnabled then return end
 		Initialized[p.UserId] = false
 		local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 3)
 		if hrp then
@@ -446,7 +441,6 @@ Players.PlayerAdded:Connect(HandlePlayer)
 Players.PlayerRemoving:Connect(CleanupPlayer)
 
 local function RunWatchdog()
-    if not HitboxEnabled then return end
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			local need = (not Initialized[p.UserId]) or (not ActiveHitboxConnections[p.UserId])
@@ -462,7 +456,9 @@ end
 task.spawn(function()
 	while true do
 		task.wait(CONFIG.WatchdogInterval)
-		pcall(RunWatchdog)
+		if WatchdogEnabled then
+			pcall(RunWatchdog)
+		end
 	end
 end)
 
