@@ -1,0 +1,458 @@
+ocal Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG = {
+	ScaleMin = 1,
+	ScaleMax = 25,
+	ScaleDefault = 4,
+	TransMin = 0,
+	TransMax = 1,
+	TransDefault = 0.75,
+	Color = Color3.fromRGB(0, 0, 0),
+	PartShape = Enum.PartType.Ball,
+	Material = Enum.Material.Neon,
+	WatchdogInterval = 2,
+	PositionLerpSpeed = 18,
+	SizeLerpSpeed = 18,
+	TagColor = Color3.fromRGB(255, 105, 180),
+	TagFont = Enum.Font.SourceSansBold,
+	TagSizeUDim = UDim2.new(3, 0, 1, 0),
+	TagOffset = Vector3.new(0, 1.5, 0),
+	TagMaxDistance = 5000,
+}
+
+local CurrentScale = CONFIG.ScaleDefault
+local CurrentTransparency = CONFIG.TransDefault
+local ActiveHitboxConnections, Initialized, NameLabels = {}, {}, {}
+local ESPEnabled, Rainbow = true, false
+local RGB = {R = 0, G = 255, B = 0}
+
+local ToggleKey = Enum.KeyCode.End
+local CapturingKey = false
+local GuiRef
+
+local function currentESPColor()
+	if Rainbow then
+		local h = (tick() * 0.2) % 1
+		return Color3.fromHSV(h, 1, 1)
+	end
+	return Color3.fromRGB(RGB.R, RGB.G, RGB.B)
+end
+
+local function destroyForPlayer(p)
+	if ActiveHitboxConnections[p.UserId] then ActiveHitboxConnections[p.UserId]:Disconnect() end
+	ActiveHitboxConnections[p.UserId] = nil
+	if p.Character then
+		local hb = p.Character:FindFirstChild("EnlargedHitboxVisual"); if hb then hb:Destroy() end
+		local head = p.Character:FindFirstChild("Head"); if head then local tag = head:FindFirstChild("PlayerNameTag"); if tag then tag:Destroy() end end
+	end
+	NameLabels[p.UserId] = nil
+	Initialized[p.UserId] = nil
+end
+
+local function destroyNameTag(p)
+	if p.Character then
+		local head = p.Character:FindFirstChild("Head")
+		if head then local tag = head:FindFirstChild("PlayerNameTag"); if tag then tag:Destroy() end end
+	end
+	NameLabels[p.UserId] = nil
+end
+
+local function SetESPEnabled(state)
+	ESPEnabled = state
+	if not ESPEnabled then
+		for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then destroyNameTag(p) end end
+	else
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and p.Character then
+				local head = p.Character:FindFirstChild("Head")
+				if head and not head:FindFirstChild("PlayerNameTag") then if _G.__CreateNameTag then _G.__CreateNameTag(p) end end
+			end
+		end
+	end
+end
+
+local function KeyToString(kc) return tostring(kc):gsub("Enum%.KeyCode%.","") end
+
+local function createUI()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "HitboxControls"
+	gui.IgnoreGuiInset = false
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 999999
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	GuiRef = gui
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromOffset(380, 460)
+	panel.Position = UDim2.new(0, 20, 0, 80)
+	panel.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+	panel.BorderSizePixel = 0
+	panel.ClipsDescendants = true
+	panel.ZIndex = 1000
+	panel.Parent = gui
+
+	local panelCorner = Instance.new("UICorner"); panelCorner.CornerRadius = UDim.new(0, 14); panelCorner.Parent = panel
+	local stroke = Instance.new("UIStroke"); stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Thickness = 1; stroke.Color = Color3.fromRGB(60,60,60); stroke.Parent = panel
+	local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0,10); pad.PaddingBottom = UDim.new(0,10); pad.PaddingLeft = UDim.new(0,10); pad.PaddingRight = UDim.new(0,10); pad.Parent = panel
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -20, 0, 22)
+	title.BackgroundTransparency = 1
+	title.Text = "sleepyy's hitbox extender"
+	title.TextColor3 = Color3.fromRGB(255,255,255)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 18
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.ZIndex = 1001
+	title.Parent = panel
+
+	local function makeSlider(y, text, minVal, maxVal, startVal, decimals, onChanged)
+		local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,46); row.Position = UDim2.fromOffset(0,y); row.BackgroundTransparency = 1; row.ZIndex = 1001; row.Parent = panel
+		local label = Instance.new("TextLabel"); label.Size = UDim2.fromOffset(150,20); label.BackgroundTransparency = 1; label.Text = text; label.TextColor3 = Color3.fromRGB(230,230,230); label.Font = Enum.Font.Gotham; label.TextSize = 14; label.TextXAlignment = Enum.TextXAlignment.Left; label.ZIndex = 1001; label.Parent = row
+		local valueLabel = Instance.new("TextLabel"); valueLabel.Size = UDim2.fromOffset(60,20); valueLabel.Position = UDim2.new(1,-60,0,0); valueLabel.BackgroundTransparency = 1; valueLabel.TextColor3 = Color3.fromRGB(180,180,180); valueLabel.Font = Enum.Font.Gotham; valueLabel.TextSize = 14; valueLabel.TextXAlignment = Enum.TextXAlignment.Right; valueLabel.ZIndex = 1001; valueLabel.Parent = row
+		local track = Instance.new("Frame"); track.Size = UDim2.new(1,-2,0,8); track.Position = UDim2.fromOffset(1,26); track.BackgroundColor3 = Color3.fromRGB(60,60,60); track.BorderSizePixel = 0; track.ZIndex = 1001; track.Parent = row
+		local trackCorner = Instance.new("UICorner"); trackCorner.CornerRadius = UDim.new(0,6); trackCorner.Parent = track
+		local fill = Instance.new("Frame"); fill.Size = UDim2.fromOffset(0,8); fill.BackgroundColor3 = Color3.fromRGB(120,120,120); fill.BorderSizePixel = 0; fill.ZIndex = 1002; fill.Parent = track
+		local fillCorner = Instance.new("UICorner"); fillCorner.CornerRadius = UDim.new(0,6); fillCorner.Parent = fill
+		local knob = Instance.new("Frame"); knob.Size = UDim2.fromOffset(16,16); knob.Position = UDim2.fromOffset(0,-4); knob.BackgroundColor3 = Color3.fromRGB(235,235,235); knob.BorderSizePixel = 0; knob.ZIndex = 1003; knob.Parent = track
+		local knobCorner = Instance.new("UICorner"); knobCorner.CornerRadius = UDim.new(1,0); knobCorner.Parent = knob
+
+		local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
+		local function round(v, d) local m=10^(d or 0); return math.floor(v*m+0.5)/m end
+		local function toA(v) return (v-minVal)/(maxVal-minVal) end
+		local function fromA(a) return minVal + a*(maxVal-minVal) end
+
+		local dragging, current = false, clamp(startVal,minVal,maxVal)
+		local function setUI(v)
+			v = clamp(round(v,decimals), minVal, maxVal); current = v
+			valueLabel.Text = (decimals>0) and string.format("%."..decimals.."f", v) or tostring(v)
+			if track.AbsoluteSize.X > 0 then
+				local x = math.floor(toA(v)*track.AbsoluteSize.X)
+				fill.Size = UDim2.fromOffset(x,8)
+				knob.Position = UDim2.fromOffset(x - math.floor(knob.Size.X.Offset/2), -4)
+			end
+		end
+		local function apply() onChanged(current) end
+
+		knob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true end end)
+		UserInputService.InputEnded:Connect(function(i) if (i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch) and dragging then dragging=false; apply() end end)
+		UserInputService.InputChanged:Connect(function(i)
+			if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+				local rel = math.clamp((i.Position.X - track.AbsolutePosition.X)/math.max(track.AbsoluteSize.X,1),0,1)
+				setUI(fromA(rel))
+			end
+		end)
+		row:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() setUI(current) end)
+		task.defer(function() setUI(current) end)
+		return { Set=function(v) setUI(v); apply() end }
+	end
+
+	makeSlider(44, "Hitbox Scale", CONFIG.ScaleMin, CONFIG.ScaleMax, CONFIG.ScaleDefault, 1, function(v) CurrentScale = v end)
+	makeSlider(92, "Transparency", CONFIG.TransMin, CONFIG.TransMax, CONFIG.TransDefault, 2, function(v) CurrentTransparency = v end)
+
+	local btnRefresh = Instance.new("TextButton"); btnRefresh.Size = UDim2.fromOffset(100,32); btnRefresh.Position = UDim2.fromOffset(0,146)
+	btnRefresh.BackgroundColor3 = Color3.fromRGB(70,120,255); btnRefresh.TextColor3 = Color3.fromRGB(255,255,255); btnRefresh.Text = "Refresh"; btnRefresh.Font = Enum.Font.GothamBold; btnRefresh.TextSize = 16; btnRefresh.ZIndex = 1001; btnRefresh.Parent = panel
+	local btnRefreshCorner = Instance.new("UICorner"); btnRefreshCorner.CornerRadius = UDim.new(0,8); btnRefreshCorner.Parent = btnRefresh
+
+	local btnESP = Instance.new("TextButton"); btnESP.Size = UDim2.fromOffset(110,32); btnESP.Position = UDim2.fromOffset(110,146)
+	btnESP.BackgroundColor3 = Color3.fromRGB(80,180,90); btnESP.TextColor3 = Color3.fromRGB(255,255,255); btnESP.Text = "ESP: ON"; btnESP.Font = Enum.Font.GothamBold; btnESP.TextSize = 16; btnESP.ZIndex = 1001; btnESP.Parent = panel
+	local btnESPCorner = Instance.new("UICorner"); btnESPCorner.CornerRadius = UDim.new(0,8); btnESPCorner.Parent = btnESP
+
+	local btnRainbow = Instance.new("TextButton"); btnRainbow.Size = UDim2.fromOffset(130,32); btnRainbow.Position = UDim2.fromOffset(225,146)
+	btnRainbow.BackgroundColor3 = Color3.fromRGB(170,120,255); btnRainbow.TextColor3 = Color3.fromRGB(255,255,255); btnRainbow.Text = "Rainbow: OFF"; btnRainbow.Font = Enum.Font.GothamBold; btnRainbow.TextSize = 16; btnRainbow.ZIndex = 1001; btnRainbow.Parent = panel
+	local btnRainbowCorner = Instance.new("UICorner"); btnRainbowCorner.CornerRadius = UDim.new(0,8); btnRainbowCorner.Parent = btnRainbow
+
+	-- Greyed, unclickable "No Black Screen" (strikethrough) — NOT a button
+	local noBlackWrap = Instance.new("Frame")
+	noBlackWrap.Name = "NoBlackScreenDisabled"
+	noBlackWrap.Size = UDim2.fromOffset(180, 36)
+	noBlackWrap.Position = UDim2.fromOffset(0, 186)
+	noBlackWrap.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+	noBlackWrap.BorderSizePixel = 0
+	noBlackWrap.ZIndex = 1100
+	noBlackWrap.Parent = panel
+
+	local noBlackCorner = Instance.new("UICorner")
+	noBlackCorner.CornerRadius = UDim.new(0, 10)
+	noBlackCorner.Parent = noBlackWrap
+
+	local noBlackLabel = Instance.new("TextLabel")
+	noBlackLabel.BackgroundTransparency = 1
+	noBlackLabel.Size = UDim2.fromScale(1, 1)
+	noBlackLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+	noBlackLabel.Font = Enum.Font.GothamBold
+	noBlackLabel.TextSize = 18
+	noBlackLabel.RichText = true
+	noBlackLabel.Text = "<s>No Black Screen</s>"
+	noBlackLabel.ZIndex = 1101
+	noBlackLabel.Parent = noBlackWrap
+
+	local keyBtn = Instance.new("TextButton"); keyBtn.Size = UDim2.fromOffset(180,36); keyBtn.Position = UDim2.fromOffset(190,186)
+	keyBtn.BackgroundColor3 = Color3.fromRGB(90,90,90); keyBtn.TextColor3 = Color3.fromRGB(255,255,255); keyBtn.Text = "Toggle Key: "..KeyToString(ToggleKey); keyBtn.Font = Enum.Font.GothamBold; keyBtn.TextSize = 16; keyBtn.ZIndex = 1100; keyBtn.Parent = panel
+	local keyBtnCorner = Instance.new("UICorner"); keyBtnCorner.CornerRadius = UDim.new(0,10); keyBtnCorner.Parent = keyBtn
+
+	local preview = Instance.new("Frame"); preview.Size = UDim2.fromOffset(28,28); preview.Position = UDim2.fromOffset(0,230); preview.BackgroundColor3 = currentESPColor(); preview.BorderSizePixel = 0; preview.ZIndex = 1001; preview.Parent = panel
+	local previewCorner = Instance.new("UICorner"); previewCorner.CornerRadius = UDim.new(1,0); previewCorner.Parent = preview
+
+	local function makeSliderBelow(y, label, start, cb)
+		return makeSlider(y, label, 0, 255, start, 0, cb)
+	end
+	local _r = makeSliderBelow(230, "R", RGB.R, function(v) RGB.R = v end)
+	local _g = makeSliderBelow(266, "G", RGB.G, function(v) RGB.G = v end)
+	local _b = makeSliderBelow(302, "B", RGB.B, function(v) RGB.B = v end)
+
+	btnRefresh.MouseButton1Click:Connect(function()
+		task.defer(function()
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer then
+					if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+						if not Initialized[p.UserId] or not ActiveHitboxConnections[p.UserId] then if _G.__SetupHitbox then _G.__SetupHitbox(p, p.Character) end end
+					end
+					if ESPEnabled and p.Character then
+						local head = p.Character:FindFirstChild("Head")
+						if head and not head:FindFirstChild("PlayerNameTag") then if _G.__CreateNameTag then _G.__CreateNameTag(p) end end
+					end
+				end
+			end
+		end)
+	end)
+
+	btnESP.MouseButton1Click:Connect(function()
+		SetESPEnabled(not ESPEnabled)
+		btnESP.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
+		btnESP.BackgroundColor3 = ESPEnabled and Color3.fromRGB(80,180,90) or Color3.fromRGB(150,70,70)
+	end)
+
+	btnRainbow.MouseButton1Click:Connect(function()
+		Rainbow = not Rainbow
+		btnRainbow.Text = Rainbow and "Rainbow: ON" or "Rainbow: OFF"
+	end)
+
+	keyBtn.MouseButton1Click:Connect(function()
+		if CapturingKey then return end
+		CapturingKey = true
+		keyBtn.Text = "Press a key..."
+	end)
+
+	RunService.RenderStepped:Connect(function()
+		preview.BackgroundColor3 = currentESPColor()
+	end)
+
+	UserInputService.InputBegan:Connect(function(input, gp)
+		if gp then return end
+		if CapturingKey and input.UserInputType == Enum.UserInputType.Keyboard then
+			ToggleKey = input.KeyCode
+			keyBtn.Text = "Toggle Key: "..KeyToString(ToggleKey)
+			CapturingKey = false
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == ToggleKey then
+			if GuiRef then GuiRef.Enabled = not GuiRef.Enabled end
+		end
+	end)
+end
+
+createUI()
+
+local function Lerp(a,b,t) return a + (b-a)*t end
+local function V3Lerp(a,b,t) return Vector3.new(Lerp(a.X,b.X,t), Lerp(a.Y,b.Y,t), Lerp(a.Z,b.Z,t)) end
+local function CF_Lerp(a,b,t) return a:Lerp(b,t) end
+
+local function createNameTag(player)
+	if not ESPEnabled then return end
+	local character = player.Character
+	local head = character and character:WaitForChild("Head", 5)
+	local hum = character and character:FindFirstChildOfClass("Humanoid")
+	if not head or not hum then return end
+	if head:FindFirstChild("PlayerNameTag") then return end
+
+	local billboardGui = Instance.new("BillboardGui")
+	billboardGui.Name = "PlayerNameTag"
+	billboardGui.Adornee = head
+	billboardGui.Size = CONFIG.TagSizeUDim
+	billboardGui.ExtentsOffset = CONFIG.TagOffset
+	billboardGui.AlwaysOnTop = true
+	billboardGui.MaxDistance = CONFIG.TagMaxDistance
+	billboardGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	billboardGui.Parent = head
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "NameLabel"
+	nameLabel.Text = player.DisplayName or player.Name
+	nameLabel.Size = UDim2.new(1, 0, 1, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.TextColor3 = currentESPColor()
+	nameLabel.TextSize = 24
+	nameLabel.Font = CONFIG.TagFont
+	nameLabel.TextStrokeTransparency = 0.8
+	nameLabel.Parent = billboardGui
+
+	NameLabels[player.UserId] = nameLabel
+	player:GetPropertyChangedSignal("DisplayName"):Connect(function() nameLabel.Text = player.DisplayName or player.Name end)
+end
+
+_G.__CreateNameTag = createNameTag
+
+local function setupPlayerTag(p)
+	p.CharacterAdded:Connect(function()
+		RunService.Heartbeat:Wait()
+		if ESPEnabled then createNameTag(p) end
+	end)
+	if p.Character and ESPEnabled then createNameTag(p) end
+end
+
+local function SetupHitbox(player, character)
+	if ActiveHitboxConnections[player.UserId] then ActiveHitboxConnections[player.UserId]:Disconnect() end
+	ActiveHitboxConnections[player.UserId] = nil
+
+	local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+	if not rootPart then return end
+
+	local hitboxVisual = character:FindFirstChild("EnlargedHitboxVisual")
+	if not hitboxVisual then
+		hitboxVisual = Instance.new("Part")
+		hitboxVisual.Name = "EnlargedHitboxVisual"
+		hitboxVisual.Shape = CONFIG.PartShape
+		hitboxVisual.Material = CONFIG.Material
+		hitboxVisual.Color = CONFIG.Color
+		hitboxVisual.Transparency = CurrentTransparency
+		hitboxVisual.Anchored = true
+		hitboxVisual.Massless = true
+		hitboxVisual.CanCollide = false
+		hitboxVisual.CanTouch = false
+		hitboxVisual.CanQuery = true
+		hitboxVisual.CastShadow = false
+		hitboxVisual.Size = Vector3.new(4,4,4)
+		hitboxVisual.CFrame = rootPart.CFrame
+		hitboxVisual.Parent = character
+	end
+
+	local smoothedCF, smoothedSize = hitboxVisual.CFrame, hitboxVisual.Size
+	local con
+	con = RunService.RenderStepped:Connect(function(dt)
+		if not rootPart.Parent or not hitboxVisual or not hitboxVisual.Parent then
+			if con then con:Disconnect() end
+			ActiveHitboxConnections[player.UserId] = nil
+			if hitboxVisual then hitboxVisual:Destroy() end
+			return
+		end
+		local s = rootPart.Size
+		local baseDiameter = math.max(s.X, s.Y, s.Z)
+		local targetDiameter = math.max(0.05, baseDiameter * CurrentScale)
+		local targetSize = Vector3.new(targetDiameter, targetDiameter, targetDiameter)
+		local targetCF = rootPart.CFrame
+
+		local posT = math.clamp(dt * CONFIG.PositionLerpSpeed, 0, 1)
+		local sizeT = math.clamp(dt * CONFIG.SizeLerpSpeed, 0, 1)
+
+		smoothedCF = CF_Lerp(smoothedCF, targetCF, posT)
+		smoothedSize = V3Lerp(smoothedSize, targetSize, sizeT)
+
+		hitboxVisual.CFrame = smoothedCF
+		hitboxVisual.Size = smoothedSize
+		hitboxVisual.Transparency = CurrentTransparency
+		hitboxVisual.Color = CONFIG.Color
+
+		local nl = NameLabels[player.UserId]
+		if nl then nl.TextColor3 = currentESPColor() end
+	end)
+	ActiveHitboxConnections[player.UserId] = con
+	Initialized[player.UserId] = true
+end
+
+_G.__SetupHitbox = SetupHitbox
+
+-- ⬇️ PASTE THE HITBOX TOGGLE CODE HERE ⬇️
+-- HITBOX TOGGLE
+local HitboxEnabled = true
+local HitboxToggleKey = Enum.KeyCode.RightAlt
+
+local function SetHitboxEnabled(state)
+	HitboxEnabled = state
+
+	if not HitboxEnabled then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then
+				if ActiveHitboxConnections[p.UserId] then
+					ActiveHitboxConnections[p.UserId]:Disconnect()
+					ActiveHitboxConnections[p.UserId] = nil
+				end
+				if p.Character then
+					local hb = p.Character:FindFirstChild("EnlargedHitboxVisual")
+					if hb then hb:Destroy() end
+				end
+				Initialized[p.UserId] = nil
+			end
+		end
+	else
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				SetupHitbox(p, p.Character)
+			end
+		end
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == HitboxToggleKey then
+		SetHitboxEnabled(not HitboxEnabled)
+	end
+end)
+
+
+local function HandlePlayer(p)
+	if p == LocalPlayer then return end
+	setupPlayerTag(p)
+	local function onChar(char)
+		Initialized[p.UserId] = false
+		local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 3)
+		if hrp then
+			SetupHitbox(p, char)
+		else
+			task.delay(0.5, function() if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then SetupHitbox(p, p.Character) end end)
+		end
+		if ESPEnabled then createNameTag(p) else destroyNameTag(p) end
+	end
+	p.CharacterAdded:Connect(onChar)
+	if p.Character then onChar(p.Character) end
+end
+
+local function CleanupPlayer(p) destroyForPlayer(p) end
+
+for _, p in ipairs(Players:GetPlayers()) do HandlePlayer(p) end
+Players.PlayerAdded:Connect(HandlePlayer)
+Players.PlayerRemoving:Connect(CleanupPlayer)
+
+local function RunWatchdog()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			local need = (not Initialized[p.UserId]) or (not ActiveHitboxConnections[p.UserId])
+			if need and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then SetupHitbox(p, p.Character) end
+			if ESPEnabled and p.Character then
+				local head = p.Character:FindFirstChild("Head")
+				if head and not head:FindFirstChild("PlayerNameTag") then createNameTag(p) end
+			end
+		end
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(CONFIG.WatchdogInterval)
+		pcall(RunWatchdog)
+	end
+end)
+
+game:BindToClose(function()
+	for _, conn in pairs(ActiveHitboxConnections) do if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end end
+	table.clear(ActiveHitboxConnections); table.clear(Initialized)
+	for _, p in ipairs(Players:GetPlayers()) do destroyForPlayer(p) end
+end)
