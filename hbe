@@ -367,38 +367,7 @@ local function SetupHitbox(player, character)
 	Initialized[player.UserId] = true
 end
 
-local HitboxEnabled = true
-local HitboxToggleKey = Enum.KeyCode.RightAlt
-
-_G.__SetupHitbox = function(player, character)
-	if not HitboxEnabled then return end
-	SetupHitbox(player, character)
-end
-
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.UserInputType == Enum.UserInputType.Keyboard
-		and input.KeyCode == HitboxToggleKey then
-
-		HitboxEnabled = not HitboxEnabled
-
-		if not HitboxEnabled then
-			for _, p in ipairs(Players:GetPlayers()) do
-				if p ~= LocalPlayer then
-					if ActiveHitboxConnections[p.UserId] then
-						ActiveHitboxConnections[p.UserId]:Disconnect()
-						ActiveHitboxConnections[p.UserId] = nil
-					end
-					if p.Character then
-						local hb = p.Character:FindFirstChild("EnlargedHitboxVisual")
-						if hb then hb:Destroy() end
-					end
-					Initialized[p.UserId] = nil
-				end
-			end
-		end
-	end
-end)
+_G.__SetupHitbox = SetupHitbox
 
 local function HandlePlayer(p)
 	if p == LocalPlayer then return end
